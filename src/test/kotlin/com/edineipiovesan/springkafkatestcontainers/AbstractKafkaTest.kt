@@ -1,5 +1,6 @@
 package com.edineipiovesan.springkafkatestcontainers
 
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.StringSerializer
@@ -7,9 +8,9 @@ import org.junit.jupiter.api.BeforeAll
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
-import org.springframework.kafka.core.DefaultKafkaProducerFactory
-import org.springframework.kafka.core.KafkaTemplate
-import org.springframework.kafka.core.ProducerFactory
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
+import org.springframework.kafka.config.KafkaListenerContainerFactory
+import org.springframework.kafka.core.*
 import org.testcontainers.containers.KafkaContainer
 import org.testcontainers.containers.Network
 import org.testcontainers.junit.jupiter.Container
@@ -21,10 +22,10 @@ import java.util.*
 abstract class AbstractKafkaTest {
 
     @Autowired
-    lateinit var producer: KafkaTemplate<String, String>
+    lateinit var producer: KafkaTemplate<String, Any>
 
     protected fun sendMessage(topic: String, key: String = UUID.randomUUID().toString(), message: String) {
-        val record = ProducerRecord(topic, key, message)
+        val record = ProducerRecord<String, Any>(topic, key, message)
         producer.send(record)
     }
 
@@ -42,7 +43,6 @@ abstract class AbstractKafkaTest {
 
     @TestConfiguration
     class KafkaTestContainersConfiguration {
-        @Bean
         fun producerConfigs(): Map<String, Any> {
             val props: MutableMap<String, Any> = HashMap()
             props[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafka.bootstrapServers
@@ -52,9 +52,28 @@ abstract class AbstractKafkaTest {
         }
 
         @Bean
-        fun producerFactory(): ProducerFactory<String?, String?> = DefaultKafkaProducerFactory(producerConfigs())
+        fun producerFactory(): ProducerFactory<String, Any> = DefaultKafkaProducerFactory(producerConfigs())
 
         @Bean
-        fun kafkaTemplate(): KafkaTemplate<String?, String?> = KafkaTemplate(producerFactory())
+        fun kafkaTemplate(): KafkaTemplate<String, Any> = KafkaTemplate(producerFactory())
+
+        fun consumerProps(): Map<String, Any> {
+            val props = HashMap<String, Any>();
+            props[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafka.bootstrapServers
+            props[ConsumerConfig.GROUP_ID_CONFIG] = UUID.randomUUID().toString()
+            props[ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG] = StringSerializer::class
+            props[ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG] = StringSerializer::class
+            return props;
+        }
+
+        @Bean
+        fun consumerFactory(): ConsumerFactory<String, Any> = DefaultKafkaConsumerFactory(consumerProps());
+
+        @Bean
+        fun kafkaListenerContainerFactory(): ConcurrentKafkaListenerContainerFactory<String, Any> {
+            val factory = ConcurrentKafkaListenerContainerFactory<String, Any>();
+            factory.consumerFactory = consumerFactory();
+            return factory;
+        }
     }
 }
